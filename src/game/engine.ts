@@ -21,6 +21,7 @@ export function startGame(
   saveBest: (n: number) => void,
   onDeath?: (score: number) => void,
   onOpenLeaderboard?: () => void,
+  onPumpkinSpeak?: (info: { event: string; distance: number; hp: number; maxHp: number; isJoke: boolean }) => void,
 ): { stop: () => void; restart: () => void } {
   const ctx = cv.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
@@ -31,11 +32,11 @@ export function startGame(
 
   // ---- Палитра ----
   const C = {
-    skyTop:'#0d0820',skyMid:'#241043',skyBot:'#4a2168',skyGlow:'#6e3a7a',
+    skyTop:'#040c1e',skyMid:'#091828',skyBot:'#112040',skyGlow:'#1a3060',
     moon:'#f7eecb',moonLt:'#fffbe8',moonSh:'#d6c393',
-    hillFar:'#1c1138',hillMid:'#241540',hillNear:'#2d1a4d',
-    ground:'#3b2a1a',groundMid:'#332415',groundDk:'#241810',
-    grass:'#2a5a32',grassMid:'#1f4426',grassDk:'#143018',grassTip:'#3a7040',
+    hillFar:'#0c2010',hillMid:'#163820',hillNear:'#1e5028',
+    ground:'#6a4820',groundMid:'#563818',groundDk:'#3e2810',
+    grass:'#52a030',grassMid:'#3e8024',grassDk:'#2a5c18',grassTip:'#72cc40',
     cloak:'#241334',cloakMid:'#352048',cloakLt:'#503070',cloakHi:'#6a458e',
     body:'#17102a',bodyMid:'#241838',bodyHi:'#352450',
     leather:'#5a3d1f',leatherHi:'#7a5530',buckle:'#d8b040',
@@ -54,10 +55,10 @@ export function startGame(
     potBg:'#5ad8c0',potGlow:'#a0ffe8',potDk:'#1a7858',
     potBottle:'#c0fff2',potCork:'#8a6030',potFace:'#0a3830',
     text:'#e8d5a8',
-    dSkyTop:'#1a4a90',dSkyMid:'#2878c8',dSkyBot:'#60b0e8',dSkyGlow:'#f0e060',
-    dHillFar:'#2a3a6a',dHillMid:'#344870',dHillNear:'#3a5478',
-    dGrass:'#3a7a30',dGrassM:'#2e6025',dGrassDk:'#1e4818',dGrassTip:'#52a040',
-    dGround:'#5a4020',dGroundM:'#4a3418',dFog:'#a0c8e8',
+    dSkyTop:'#1a6ab4',dSkyMid:'#3494d8',dSkyBot:'#78c8f0',dSkyGlow:'#c0e8f8',
+    dHillFar:'#1e4820',dHillMid:'#286030',dHillNear:'#347838',
+    dGrass:'#5ab838',dGrassM:'#469828',dGrassDk:'#327018',dGrassTip:'#80e050',
+    dGround:'#7a5830',dGroundM:'#624618',dFog:'#c8e4f4',
     // пустыня
     desertSkyTop:'#c87820',desertSkyMid:'#e8a030',desertSkyBot:'#f5c860',desertSkyGlow:'#ffe090',
     desertDuneF:'#d4a44c',desertDuneM:'#c08830',desertDuneN:'#e8b85a',
@@ -107,11 +108,6 @@ export function startGame(
     britKhaki:'#8a7840',britKhakiHi:'#a89050',britKhakiDk:'#5e5018',
     britHelm:'#d4c878',britHelmHi:'#ece8a0',britRifle:'#7a5828',britRifleMet:'#909090',
     goldCol:'#f0c030',goldHi:'#ffe060',goldDk:'#b89010',goldGlow:'#ffeea0',
-    // Бэкрумс — лиминальное пространство
-    bkrWall:'#c8bc60',bkrWallHi:'#e0d478',bkrWallDk:'#a09840',
-    bkrFloor:'#b0a030',bkrFloorHi:'#ccc050',bkrFloorDk:'#806e18',
-    bkrCeil:'#d4ca70',bkrLight:'#ffffe8',bkrPillar:'#a09028',
-    bkrEntity:'#181408',bkrEntityHi:'#302c10',
     // Шахта/Пещера
     mineSkyTop:'#0c0810',mineSkyMid:'#160e18',mineSkyBot:'#201420',mineSkyGlow:'#2a1828',
     mineWall:'#4a3c38',mineWallHi:'#6a5850',mineWallDk:'#2a1e1c',
@@ -130,8 +126,28 @@ export function startGame(
   const ST = { MENU:0, PLAY:1, DEAD:2, CUTSCENE:3, ENDING:4, LEVELUP:5, BOSS:6 };
   let state = ST.MENU, ct = 0, menuSel = 0;
 
+  // ---- Обучение ----
+  const TUT_KEY='headless_tut';
+  const TUT_STEPS=[
+    {icon:'↑', line1:'ПРОБЕЛ / МЫШЬ',   line2:'— ПРЫЖОК'},
+    {icon:'⚔', line1:'ЛКМ',             line2:'— УДАР МЕЧОМ'},
+    {icon:'🐴',line1:'ESC',             line2:'— СЛЕЗТЬ С КОНЯ'},
+    {icon:'🐴',line1:'E',               line2:'— СЕСТЬ НА КОНЯ'},
+    {icon:'⚡',line1:'SHIFT',           line2:'— РЫВОК!'},
+  ];
+  let tutStep=localStorage.getItem(TUT_KEY)?0:1;
+  let tutTimer=0;
+  const TUT_AUTO=300;
+
+  function advTut(forStep:number){
+    if(tutStep!==forStep)return;
+    tutTimer=0;tutStep++;
+    if(tutStep>TUT_STEPS.length){tutStep=0;localStorage.setItem(TUT_KEY,'1');}
+  }
+
   // ---- Игровые переменные ----
   let camX=0, speed=1.0, distance=0, best=getBest();
+  let pumpkinSpeakNext=1500;
   const hero = { x:54, y:GY, vy:0, onGround:true, mounted:true, runFrame:0, landTimer:0 };
   const GRAV=0.62, JUMP_V=-7.4, JUMP_HOLD=-0.26;
   let jumpHeld=false;
@@ -166,15 +182,7 @@ export function startGame(
   let zoneGates: ZoneGate[] = [];
   let boerTransition=0, boerFlash=0;
   let mineTransition=0, mineFlash=0;
-  // Бэкрумс: 0=нет, 1..60=падение, 61+=активен, 421=выход-анимация
-  let backrooms=0;
   let goldItems: GoldItem[] = [], goldSpawnTimer=700;
-  // Капля — монстр бэкрумса
-  let dropX=-200, dropActive=false, dropKill=false;
-  // Дырка для побега из бэкрумса
-  let holeX=999, holeActive=false;
-  // Для фоновой мебели в бэкрумсе
-  let bkrFurniture: {type:string; x:number; y:number}[] = [];
 
 
   // ---- RPG ----
@@ -183,17 +191,17 @@ export function startGame(
   let floatNums: FloatNum[] = [];
   // квесты — 3 одновременно
   const QUEST_POOL: Quest[] = [
-    {id:'kill5skel', desc:'Убей 3 скелетов',   icon:'💀', target:3,  progress:0, done:false, xpReward:40},
-    {id:'kill3kni',  desc:'Убей 2 рыцарей',    icon:'⚔',  target:2,  progress:0, done:false, xpReward:50},
-    {id:'kill5band', desc:'Убей 3 разбойников', icon:'🗡',  target:3,  progress:0, done:false, xpReward:40},
-    {id:'travel1k',  desc:'Пройди 500м',        icon:'🏃',  target:500, progress:0, done:false, xpReward:30},
-    {id:'kill3zomb', desc:'Убей 2 зомби',       icon:'🧟',  target:2,  progress:0, done:false, xpReward:35},
-    {id:'kill5any',  desc:'Убей 3 врагов',      icon:'⚡',  target:3,  progress:0, done:false, xpReward:25},
-    {id:'pot3',      desc:'Выпей 1 зелье',      icon:'🧪',  target:1,  progress:0, done:false, xpReward:30},
-    {id:'kill2mum',  desc:'Убей 1 мумию',       icon:'🧟',  target:1,  progress:0, done:false, xpReward:45},
-    {id:'kill5gob',  desc:'Убей 3 гоблинов',    icon:'👺',  target:3,  progress:0, done:false, xpReward:35},
-    {id:'kill3liz',  desc:'Убей 2 ящеров',      icon:'🦎',  target:2,  progress:0, done:false, xpReward:45},
-    {id:'kill3rat',  desc:'Убей 2 крысошахтёра', icon:'🐀',  target:2,  progress:0, done:false, xpReward:40},
+    {id:'kill5skel', desc:'Убей 3 скелета',   icon:'💀', target:3,  progress:0, done:false, xpReward:40},
+    {id:'kill3kni',  desc:'Убей 2 рыцаря',    icon:'⚔',  target:2,  progress:0, done:false, xpReward:50},
+    {id:'kill5band', desc:'Убей 3 бандита',   icon:'🗡',  target:3,  progress:0, done:false, xpReward:40},
+    {id:'travel1k',  desc:'Проедь 500 метров', icon:'🏇',  target:500, progress:0, done:false, xpReward:30},
+    {id:'kill3zomb', desc:'Убей 2 зомби',      icon:'🧟',  target:2,  progress:0, done:false, xpReward:35},
+    {id:'kill5any',  desc:'Убей 3 врага',      icon:'⚡',  target:3,  progress:0, done:false, xpReward:25},
+    {id:'pot3',      desc:'Выпей зелье',        icon:'🧪',  target:1,  progress:0, done:false, xpReward:30},
+    {id:'kill2mum',  desc:'Убей мумию',         icon:'🪦',  target:1,  progress:0, done:false, xpReward:45},
+    {id:'kill5gob',  desc:'Убей 3 гоблина',    icon:'👺',  target:3,  progress:0, done:false, xpReward:35},
+    {id:'kill3liz',  desc:'Убей 2 ящера',      icon:'🦎',  target:2,  progress:0, done:false, xpReward:45},
+    {id:'kill3rat',  desc:'Убей 2 шахтёра',    icon:'🐀',  target:2,  progress:0, done:false, xpReward:40},
   ];
   let activeQuests: Quest[] = [];
   let usedQuestIds = new Set<string>();
@@ -226,12 +234,13 @@ export function startGame(
   }));
 
   // ---- Вспомогательные ----
-  const PF = "'Press Start 2P','Courier New',monospace";
+  const PF = "'Segoe UI','Arial',sans-serif";
   function px(x:number,y:number,w:number,h:number,col:string){ctx.fillStyle=col;ctx.fillRect(x|0,y|0,w,h);}
-  function txt(s:string,x:number,y:number,col:string,size:number,align:CanvasTextAlign='left',outline='#000'){
-    ctx.font=`${size}px ${PF}`;ctx.textAlign=align;ctx.fillStyle=outline;
-    for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++)if(dx||dy)ctx.fillText(s,x+dx,y+dy);
-    ctx.fillStyle=col;ctx.fillText(s,x,y);
+  function txt(s:string,x:number,y:number,col:string,size:number,align:CanvasTextAlign='left',outline='#000',maxW?:number){
+    ctx.font=`bold ${size}px ${PF}`;ctx.textAlign=align;
+    ctx.fillStyle=outline;
+    ctx.fillText(s,x+1,y+1,maxW);
+    ctx.fillStyle=col;ctx.fillText(s,x,y,maxW);
   }
   function lerpColor(a:string,b:string,t:number){
     const ah=parseInt(a.slice(1),16),bh=parseInt(b.slice(1),16);
@@ -268,6 +277,7 @@ export function startGame(
     if(hero.onGround&&mountAnim===0&&dismountAnim===0){
       hero.vy=JUMP_V;hero.onGround=false;jumpHeld=true;
       for(let i=0;i<6;i++)dust.push({x:hero.x,y:GY,vx:-Math.random()*1.5-speed*0.3,vy:-Math.random()*1.2,life:18,maxLife:18});
+      advTut(1);
     }
   }
   function endHold(){jumpHeld=false;}
@@ -276,12 +286,14 @@ export function startGame(
     if(!horseEntity||Math.abs(horseEntity.x-hero.x)>38)return;
     hero.mounted=true;mountAnim=18;
     for(let i=0;i<8;i++)dust.push({x:hero.x,y:GY,vx:(-Math.random()*2-1)*(i<4?1:-0.5),vy:-Math.random()*2.5,life:22,maxLife:22});
+    advTut(4);
   }
   function doDisMount(){
     if(state!==ST.PLAY||!hero.mounted||dismountAnim>0||mountAnim>0)return;
     hero.mounted=false;dismountAnim=16;
     if(horseEntity)horseEntity.x=hero.x+20;
     for(let i=0;i<8;i++)dust.push({x:hero.x+10,y:GY,vx:(Math.random()*2)*(i<4?1:-0.5),vy:-Math.random()*2,life:20,maxLife:20});
+    advTut(3);
   }
   function doSwordAttack(){
     if(state!==ST.PLAY||swordSlash>0)return;
@@ -301,6 +313,7 @@ export function startGame(
     if(hit)for(let i=0;i<6;i++)swordParticles.push({x:hero.x+30,y:hero.y-20,vx:Math.random()*3+1,vy:(Math.random()-0.5)*2,life:16,maxLife:16,spark:true});
     // котик наносит ответный урон игроку — мгновенная смерть
     if(killed.some(t=>t==='cat')){hp=0;hitTimer=90;killHero();}
+    advTut(2);
   }
 
   function doSuperAttack(){
@@ -332,8 +345,8 @@ export function startGame(
     if(state!==ST.PLAY||!hero.mounted||sprintActive>0||sprintTimer>0)return;
     sprintActive=SPRINT_DURATION;
     sprintTimer=SPRINT_COOLDOWN;
-    // пыль из-под копыт при старте
     for(let i=0;i<14;i++)dust.push({x:hero.x-10,y:GY,vx:-Math.random()*5-2,vy:-Math.random()*3.5,life:28,maxLife:28});
+    advTut(5);
   }
 
   function onKeyDown(e:KeyboardEvent){
@@ -475,23 +488,84 @@ export function startGame(
     lastMilestone=0;speedFlash=0;
     dayPhase=0;dayTransition=0;lastDayMile=0;dayFlash=0;
     desertTransition=0;desertFlash=0;cyberTransition=0;cyberFlash=0;catTransition=0;catFlash=0;
-    boerTransition=0;boerFlash=0;mineTransition=0;mineFlash=0;backrooms=0;hauntedTransition=0;
+    boerTransition=0;boerFlash=0;mineTransition=0;mineFlash=0;hauntedTransition=0;
     zoneGates=[];sprintActive=0;sprintTimer=0;menuSel=0;moveLeft=false;moveRight=false;
     goldItems=[];goldSpawnTimer=700;
-    dropX=-200;dropActive=false;dropKill=false;
-    holeX=999;holeActive=false;
-    bkrFurniture=[];
+    pumpkinSpeakNext=1500;
 
     crow.x=250;crow.y=50;crow.bob=0;
     xp=0;level=1;xpToNext=60;statAtk=1;statDef=0;floatNums=[];levelUpChoices=[];
     initQuests();
   }
 
+  // ---- Меню-демо (фоновая анимация) ----
+  const MX=60, MSPEED=1.3;
+  let mCamX=0, mHeroY=GY, mHeroVY=0, mOnGround=true, mSlash=0, mRunF=0, mSpawnT=60;
+  let mObs:Obstacle[]=[], mDust:Particle[]=[];
+
+  function updateMenuDemo(){
+    mCamX+=MSPEED; mRunF+=0.18;
+    // гравитация
+    if(!mOnGround){mHeroVY+=GRAV;mHeroY+=mHeroVY;if(mHeroY>=GY){mHeroY=GY;mHeroVY=0;mOnGround=true;}}
+    if(mSlash>0)mSlash--;
+    // двигаем препятствия
+    for(const o of mObs){o.x-=MSPEED;o.bob+=o.type==='zombie'?0.08:o.type==='skeleton'?0.22:0.10;}
+    mObs=mObs.filter(o=>o.x>-40);
+    // пыль под копытами
+    if(mOnGround&&Math.floor(mRunF*4)%4===0)mDust.push({x:MX-10,y:GY,vx:-Math.random()*2-1,vy:-Math.random()*1.5,life:18,maxLife:18});
+    for(const d of mDust){d.x+=d.vx;d.y+=d.vy;d.vy+=0.06;d.life--;}
+    mDust=mDust.filter(d=>d.life>0);
+    // ИИ: реагируем на ближайшее препятствие
+    const alive=mObs.filter(o=>o.x>MX-5&&o.hp>0);
+    const near=alive.sort((a,b)=>a.x-b.x)[0];
+    if(near){
+      const dist=near.x-MX;
+      const enemy=near.type==='zombie'||near.type==='skeleton';
+      if(enemy&&dist<50&&dist>18&&mSlash===0){
+        mSlash=18;near.hp=0;
+        for(let i=0;i<10;i++)mDust.push({x:near.x,y:GY-12,vx:(Math.random()-0.4)*5,vy:-Math.random()*4,life:22,maxLife:22,spark:true});
+      }else if(!enemy&&dist<34&&mOnGround){
+        mHeroVY=JUMP_V;mOnGround=false;
+      }
+    }
+    // спавн
+    mSpawnT--;
+    if(mSpawnT<=0){
+      const pool=['zombie','skeleton','zombie','tomb','skeleton','fence','zombie','tomb'];
+      const t=pool[Math.floor(Math.random()*pool.length)];
+      const o:Obstacle={type:t,x:W+24,y:GY,w:0,h:0,bob:Math.random()*6,passed:false,hp:1,maxHp:1,xpVal:0};
+      if(t==='tomb'){o.w=16;o.h=22;}else if(t==='fence'){o.w=12;o.h=14;}
+      else if(t==='zombie'){o.w=20;o.h=22;}else if(t==='skeleton'){o.w=14;o.h=26;}
+      mObs.push(o);
+      mSpawnT=70+Math.floor(Math.random()*70);
+    }
+  }
+
+  function drawMenuDemo(){
+    // пыль
+    for(const d of mDust){
+      const a=d.life/d.maxLife;ctx.globalAlpha=a*0.7;
+      if(d.spark){px(d.x|0,d.y|0,2,2,'#ffe840');}
+      else{px(d.x|0,d.y|0,3,2,'#7a6050');}
+    }
+    ctx.globalAlpha=1;
+    // препятствия
+    for(const o of mObs){if(o.hp>0)drawOb(o);}
+    // всадник
+    const sx=hero.x,sy=hero.y,so=hero.onGround,svy=hero.vy,sf=hero.runFrame,sl=hero.landTimer;
+    const sSlash=swordSlash,sAnim=swordAnim,sGhost=ghostTimer,sHit=hitTimer,sSprint=sprintActive;
+    hero.x=MX;hero.y=mHeroY;hero.onGround=mOnGround;hero.vy=mHeroVY;hero.runFrame=mRunF;hero.landTimer=0;
+    swordSlash=mSlash;swordAnim=mSlash;ghostTimer=0;hitTimer=0;sprintActive=0;
+    drawHeroOnHorse(MX,mHeroY);
+    if(mSlash>0)drawSwordSlashEffect(MX,mHeroY);
+    hero.x=sx;hero.y=sy;hero.onGround=so;hero.vy=svy;hero.runFrame=sf;hero.landTimer=sl;
+    swordSlash=sSlash;swordAnim=sAnim;ghostTimer=sGhost;hitTimer=sHit;sprintActive=sSprint;
+  }
+
   // ---- Обновление ----
   function spawnOb(){
     let pool:string[];
-    if(backrooms>=61)pool=['bkr_entity','bkr_entity','bkr_light','bkr_tv','bkr_entity','bkr_tv'];
-    else if(mineTransition>0.5)pool=['mimic','rat_miner','mimic','rat_miner','mimic','rat_miner','mimic'];
+    if(mineTransition>0.5)pool=['mimic','rat_miner','mimic','rat_miner','mimic','rat_miner','mimic'];
     else if(boerTransition>0.5)pool=['british_soldier','british_soldier','british_officer','british_soldier','british_officer','british_soldier'];
     else if(catTransition>0.5)pool=['cat','cat','stone','cat','stone','cat'];
     else if(cyberTransition>0.5)pool=['cyber_punk','drone','robot','cyber_car','neon_barrier','cyber_punk','drone'];
@@ -523,35 +597,36 @@ export function startGame(
     if(t==='rat_miner')       {ob.w=14;ob.h=22;}
     if(t==='british_soldier') {ob.w=16;ob.h=28;}
     if(t==='british_officer') {ob.w=16;ob.h=30;}
-    if(t==='bkr_entity')      {ob.w=14;ob.h=30;}
-    if(t==='bkr_light')       {ob.w=18;ob.h=8;}
-    if(t==='bkr_tv')          {ob.w=26;ob.h=22;}
     if(t==='mimic')           {ob.w=22;ob.h=20;ob.xpVal=18;}
     obstacles.push(ob);
   }
 
   function update(){
     ct++;
+    if(state===ST.MENU){updateMenuDemo();return;}
     if(state!==ST.PLAY)return;
     if(speed<3.5)speed=Math.min(3.5,speed+0.0006);
     const eff=hero.mounted?(sprintActive>0?speed*2.5:speed*1.22):speed;
     const MOVE_SPD=2.2;
     if(moveRight)hero.x=Math.min(hero.x+MOVE_SPD, W-30);
     if(moveLeft) hero.x=Math.max(hero.x-MOVE_SPD, 20);
-    camX+=eff;distance+=eff;
-    if(distance>best){best=Math.floor(distance);saveBest(best);}
-    // квест на дистанцию
-    for(const q of activeQuests){
-      if(!q.done&&q.id==='travel1k'){
-        const dp=Math.min(q.target,Math.floor(distance));
-        if(dp>q.progress){q.progress=dp;if(dp>=q.target)checkQuestDone(q);}
+    camX+=eff;
+    if(tutStep===0){
+      distance+=eff;
+      if(distance>best){best=Math.floor(distance);saveBest(best);}
+      // квест на дистанцию
+      for(const q of activeQuests){
+        if(!q.done&&q.id==='travel1k'){
+          const dp=Math.min(q.target,Math.floor(distance));
+          if(dp>q.progress){q.progress=dp;if(dp>=q.target)checkQuestDone(q);}
+        }
       }
+      const milestone=Math.floor(distance/1000);
+      if(milestone>lastMilestone){lastMilestone=milestone;if(speed<3.5)speed=Math.min(3.5,speed+0.2);speedFlash=120;
+        for(let i=0;i<10;i++)dust.push({x:hero.x+(-8+i*2),y:GY,vx:(-Math.random()*3-2)*(i<5?1:-0.4),vy:-Math.random()*2.5,life:24,maxLife:24});}
+      if(speedFlash>0)speedFlash--;
+      if(distance>=pumpkinSpeakNext){pumpkinSpeakNext=distance+1200+Math.random()*800;onPumpkinSpeak?.({event:'ride',distance:Math.floor(distance),hp,maxHp,isJoke:Math.random()<0.15});}
     }
-
-    const milestone=Math.floor(distance/1000);
-    if(milestone>lastMilestone){lastMilestone=milestone;if(speed<3.5)speed=Math.min(3.5,speed+0.2);speedFlash=120;
-      for(let i=0;i<10;i++)dust.push({x:hero.x+(-8+i*2),y:GY,vx:(-Math.random()*3-2)*(i<5?1:-0.4),vy:-Math.random()*2.5,life:24,maxLife:24});}
-    if(speedFlash>0)speedFlash--;
 
     const dayMile=Math.floor(distance/5000);
     if(dayMile>lastDayMile){lastDayMile=dayMile;dayPhase=1-dayPhase;dayFlash=180;zoneGates.push({x:W+50,kind:dayPhase===1?'dawn':'dusk'});}
@@ -593,67 +668,9 @@ export function startGame(
     if(!hero.onGround){
       if(jumpHeld&&hero.vy<0)hero.vy+=JUMP_HOLD;
       hero.vy+=GRAV;hero.y+=hero.vy;
-      // блокируем посадку только во время анимации падения (1..60)
-      if(hero.y>=GY&&!(backrooms>=1&&backrooms<=60)){
+      if(hero.y>=GY){
         hero.y=GY;hero.vy=0;hero.onGround=true;hero.landTimer=10;
         for(let i=0;i<7;i++)dust.push({x:hero.x+(-6+i*2),y:GY,vx:(-Math.random()*2.5-eff*0.3)*(i<4?1:-0.5),vy:-Math.random()*2,life:20,maxLife:20});
-      }
-    }
-    // анимация провала в бэкрумс
-    if(backrooms>0&&backrooms<=60){
-      backrooms++;
-      hero.vy+=0.5;hero.onGround=false; // проваливается сквозь землю
-      // частицы-земля летят вверх (след «хвоста»)
-      if(backrooms%4===0)for(let i=0;i<3;i++)dust.push({x:hero.x+(-4+i*4),y:GY,vx:(Math.random()-0.5)*3,vy:-Math.random()*3-1,life:25,maxLife:25});
-      if(backrooms===60){backrooms=61;hero.y=GY;hero.vy=0;hero.onGround=true;obstacles=[];
-        for(let i=0;i<20;i++)dust.push({x:hero.x+(-8+i*2),y:GY,vx:(Math.random()-0.5)*6,vy:-Math.random()*4-2,life:30,maxLife:30});}
-    }
-    // ---- Активная фаза бэкрумса ----
-    if(backrooms>=61){
-      backrooms++;
-      // Инициализация мебели при входе
-      if(backrooms===62){
-        bkrFurniture=[];
-        for(let i=0;i<12;i++)bkrFurniture.push({
-          type:['table','chair','cabinet','lamp'][i%4],
-          x:80+i*220, y:GY
-        });
-        dropX=-200;dropActive=false;holeX=999;holeActive=false;
-      }
-      // Капля появляется через 80 кадров после входа
-      if(backrooms===141&&!dropActive){dropActive=true;dropX=-200;}
-      // Двигаем каплю к герою (экранные координаты — герой на x=54)
-      if(dropActive&&!dropKill){
-        dropX+=0.9; // медленно ползёт вправо
-        // Частицы-слизь за каплей
-        if(backrooms%3===0)dust.push({x:dropX+4,y:GY-6,vx:-0.5,vy:-Math.random()*1.5,life:20,maxLife:20});
-        if(dropX>=hero.x-8){
-          // Капля догнала! Разрыв
-          dropKill=true;
-          for(let i=0;i<28;i++)swordParticles.push({x:hero.x,y:hero.y-14,vx:(Math.random()-0.5)*8,vy:-Math.random()*6-1,life:45,maxLife:45,spark:true});
-          for(let i=0;i<14;i++)dust.push({x:hero.x,y:hero.y-10,vx:(Math.random()-0.5)*5,vy:-Math.random()*4-1,life:30,maxLife:30});
-          hp=0;hitTimer=90;killHero();return;
-        }
-      }
-      // Дырка появляется через 120 кадров после входа, мчится слева с правого края
-      if(backrooms===181&&!holeActive){holeActive=true;holeX=W+20;}
-      if(holeActive){
-        holeX-=eff*1.2; // быстрее обычных препятствий
-        // Прыжок в дырку: герой на земле И позиция совпадает
-        if(hero.onGround&&Math.abs(holeX-hero.x)<18){
-          // Телепорт в обычный мир
-          holeActive=false;dropActive=false;dropX=-200;
-          backrooms=361; // запускаем анимацию выхода
-        }
-        if(holeX<-30){holeActive=false;} // улетела — шанс упущен
-      }
-    }
-    // Анимация выхода из бэкрумса
-    if(backrooms>=361&&backrooms<=420){
-      backrooms++;
-      if(backrooms===421){backrooms=0;hero.y=GY;hero.vy=0;hero.onGround=true;obstacles=[];
-        dropActive=false;dropX=-200;holeActive=false;holeX=999;bkrFurniture=[];
-        for(let i=0;i<20;i++)swordParticles.push({x:hero.x,y:hero.y-20,vx:(Math.random()-0.5)*7,vy:-Math.random()*5-2,life:40,maxLife:40,spark:true});
       }
     }
     if(hero.landTimer>0)hero.landTimer--;
@@ -720,8 +737,10 @@ export function startGame(
     for(const sp of swordParticles){sp.x+=sp.vx;sp.y+=sp.vy;sp.vy+=0.08;sp.life--;}
     swordParticles=swordParticles.filter(sp=>sp.life>0);
 
-    spawnTimer--;
-    if(spawnTimer<=0){spawnOb();const base=hero.mounted?44:60;spawnTimer=Math.max(28,base+Math.random()*52-Math.min(28,distance*0.01));}
+    if(tutStep===0){
+      spawnTimer--;
+      if(spawnTimer<=0){spawnOb();const base=hero.mounted?44:60;spawnTimer=Math.max(28,base+Math.random()*52-Math.min(28,distance*0.01));}
+    }
     for(const g of zoneGates)g.x-=eff;
     // Вход в ворота — мгновенный переход в локацию
     for(const g of zoneGates){
@@ -768,11 +787,7 @@ export function startGame(
         const obb:Rect={x:ob.x-ob.w/2+3,y:(ob.type==='ghost'?ob.y+Math.sin(ob.bob)*4:ob.y)-ob.h+2,w:ob.w-6,h:ob.h-4};
         if(overlap(hb,obb)){hp--;hitTimer=90;for(let i=0;i<8;i++)dust.push({x:hero.x,y:hero.y-10,vx:(Math.random()-0.5)*3,vy:-Math.random()*2.5,life:20,maxLife:20});if(hp<=0){killHero();return;}}
       }
-      // перепрыгнуто — шанс 0.05% провалиться в бэкрумс
-      if(!ob.passed&&ob.x+ob.w/2<hero.x-4){
-        ob.passed=true;
-        if(backrooms===0&&Math.random()<0.0075)backrooms=1;
-      }
+      if(!ob.passed&&ob.x+ob.w/2<hero.x-4){ob.passed=true;}
     }
     obstacles=obstacles.filter(o=>o.x>-30);
 
@@ -799,6 +814,11 @@ export function startGame(
     // плавающие числа
     for(const fn of floatNums){fn.y-=0.9;fn.life--;}
     floatNums=floatNums.filter(fn=>fn.life>0);
+    // таймер обучения — авто-переход
+    if(tutStep>0){
+      tutTimer++;
+      if(tutTimer>TUT_AUTO){tutTimer=0;tutStep++;if(tutStep>TUT_STEPS.length){tutStep=0;localStorage.setItem(TUT_KEY,'1');}}
+    }
   }
 
   // ============================================================
@@ -1304,14 +1324,14 @@ export function startGame(
       ctx.globalAlpha=1-dst;
       drawCity(camX*0.08,(1-dst)*(dt<0.5?0.72:0.55));
       drawBirds((1-dst)*0.9);
-      const fogNight=lerpColor('#4a3568',C.hntFog,hnt);
+      const fogNight=lerpColor('#2a4060',C.hntFog,hnt);
       const fogCol=lerpColor(fogNight,C.dFog,dt);
       px(0,GY-34,W,34,`rgba(74,53,104,${dt<0.5?0.18:0.10})`);
       drawHills(camX*0.15,lerpColor(lerpColor(C.hillFar,C.hntHillFar,hnt),C.dHillFar,dt),GY-22,30,false);
       drawHills(camX*0.32,lerpColor(lerpColor(C.hillMid,C.hntHillMid,hnt),C.dHillMid,dt),GY-12,22,false);
       drawHills(camX*0.5,lerpColor(lerpColor(C.hillNear,C.hntHillNear,hnt),C.dHillNear,dt),GY-4,16,true);
-      const tN=lerpColor(lerpColor('#150c20','#1e0c0c',hnt),'#304060',dt);
-      const tF=lerpColor(lerpColor('#0f0818','#160808',hnt),'#202a40',dt);
+      const tN=lerpColor(lerpColor('#0c1a08','#1e0c0c',hnt),'#1e4010',dt);
+      const tF=lerpColor(lerpColor('#081208','#160808',hnt),'#142c0c',dt);
       drawTrees(camX*0.5,360,GY,tN,30);drawTrees(camX*0.72,260,GY,tF,22);
       drawFarTombs(camX*0.6);
       const fogA=dt>0.5?0.06:0.12;ctx.globalAlpha=(1-dst)*fogA;
@@ -1362,6 +1382,11 @@ export function startGame(
     const grndDk=lerpColor(lerpColor(lerpColor(C.groundDk,C.hntGroundDk,hnt),'#3a2810',dt),C.desertGroundDk,dst);
     px(0,GY,W,3,grTip);px(0,GY+1,W,1,gr);px(0,GY+3,W,3,grMid);px(0,GY+6,W,4,grDk);
     px(0,GY+10,W,4,grnd);px(0,GY+14,W,H-GY-14,grndM);
+    // Terraria: тайловая сетка на земле
+    ctx.globalAlpha=0.22;const TW=16;
+    for(let gi=-1;gi<W/TW+2;gi++){const gx=(gi*TW-(camX%TW))|0;px(gx,GY+10,1,H-GY-10,grndDk);}
+    for(let gy=GY+10;gy<H;gy+=14)px(0,gy,W,1,grndDk);
+    ctx.globalAlpha=1;
     for(let i=-1;i<W/14+1;i++){const x=i*14-(camX%14);px(x,GY+16,5,2,grndDk);px(x+8,GY+22,3,2,grndDk);}
     if(dst<0.8){for(let i=-1;i<W/7+1;i++){const x=i*7-(camX%7);const h=2+((i*37)%3);px(x,GY-h,1,h,grMid);px(x+1,GY-h+1,1,h-1,gr);px(x+2,GY-h,1,h,grDk);px(x+1,GY-h,1,1,grTip);}}
     // камешки на земле (нет в пустыне и шахте)
@@ -1471,120 +1496,6 @@ export function startGame(
       // туман в глубине
       ctx.globalAlpha=mineTransition*0.22;
       for(let i=-1;i<W/64+2;i++){const fx=(i*64-(camX*0.2)%64)|0;px(fx,GY-22,54,16,C.mineFog);}
-      ctx.globalAlpha=1;
-    }
-    // Бэкрумс — лиминальный офис
-    if(backrooms>=61){
-      const aRaw=backrooms<=120?(backrooms-61)/59:backrooms>=361?1-(backrooms-361)/59:1;
-      const a=Math.max(0,Math.min(1,aRaw));
-      const dropPresent=dropActive&&!dropKill;
-      // когда капля активна — более насыщенный жёлтый
-      const wallCol=dropPresent?'#e0d050':C.bkrWall;
-      const floorCol=dropPresent?'#c8b820':C.bkrFloor;
-      const wallDkCol=dropPresent?'#b0a020':C.bkrWallDk;
-      ctx.globalAlpha=a;
-      // стены и потолок
-      px(0,0,W,GY,wallCol);
-      // решётка потолочных плиток
-      for(let i=-1;i<W/22+1;i++){const gx=(i*22-(camX%22))|0;px(gx,0,1,GY,wallDkCol);}
-      for(let gy=0;gy<GY;gy+=14)px(0,gy,W,1,wallDkCol);
-      // флуоресцентные лампы
-      const flick=(Math.sin(ct*0.23+1)*0.5+0.5);
-      const lampCount=dropPresent?6:4;
-      const lampSpacing=dropPresent?54:80;
-      for(let i=0;i<lampCount;i++){const lx=(i*lampSpacing-(camX%(lampSpacing))|0);
-        ctx.globalAlpha=a*(0.8+flick*0.2);px(lx,1,lampSpacing-4,5,C.bkrLight);
-        ctx.globalAlpha=a*(0.25+flick*0.25);px(lx-3,0,lampSpacing+2,22,C.bkrLight);ctx.globalAlpha=a;}
-      // пол — потёртый ковёр
-      px(0,GY,W,H-GY,floorCol);
-      for(let i=-1;i<W/16+1;i++){const gx=(i*16-(camX%16))|0;px(gx,GY,1,H-GY,wallDkCol);}
-      for(let gy=GY+8;gy<H;gy+=8)px(0,gy,W,1,wallDkCol);
-      // фоновая мебель (параллакс)
-      for(const f of bkrFurniture){
-        const fx=(f.x-camX*0.35)|0;
-        if(fx<-40||fx>W+40)continue;
-        ctx.globalAlpha=a*0.55;
-        if(f.type==='table'){
-          px(fx-14,GY-18,28,10,wallDkCol);px(fx-12,GY-8,4,8,wallDkCol);px(fx+8,GY-8,4,8,wallDkCol);
-        }else if(f.type==='chair'){
-          px(fx-8,GY-14,16,8,wallDkCol);px(fx-7,GY-6,3,6,wallDkCol);px(fx+4,GY-6,3,6,wallDkCol);
-          px(fx-8,GY-22,3,9,wallDkCol);px(fx-8,GY-22,14,3,wallDkCol);
-        }else if(f.type==='cabinet'){
-          px(fx-10,GY-36,20,36,wallDkCol);px(fx-9,GY-20,18,1,'#907830');px(fx-9,GY-35,18,1,C.bkrWall);
-          px(fx-4,GY-28,3,3,'#706020');px(fx+2,GY-28,3,3,'#706020');
-        }else if(f.type==='lamp'){
-          px(fx-1,GY-48,3,48,wallDkCol);px(fx-8,GY-50,16,10,wallDkCol);
-          ctx.globalAlpha=a*(0.3+flick*0.2);px(fx-10,GY-54,20,16,C.bkrLight);ctx.globalAlpha=a*0.55;
-        }
-        ctx.globalAlpha=a;
-      }
-      // пятна и следы на полу
-      for(const bxf of[30,90,160,230,280]){const rx=(bxf-((camX*0.9)%320))|0;ctx.globalAlpha=a*0.22;px(rx,GY+3,12,5,wallDkCol);ctx.globalAlpha=a;}
-
-      // ---- Рисунки чёрного света (UV-арт на стенах) ----
-      const UV=['#d020ff','#00ffee','#40ff30','#ff2090','#ff8800'];
-      // 8 рисунков по миру, тайлятся каждые 560 единиц
-      const uvDefs:[number,number,string][]=[
-        [40, 60,'eye'],[140,40,'figure'],[230,72,'spiral'],
-        [310,50,'face'],[400,62,'eye'],[470,44,'figure'],
-        [530,55,'spiral'],[610,42,'face'],
-      ];
-      const uvTile=560;
-      for(const[wx,wy,ut] of uvDefs){
-        const raw=wx-(camX*0.18);
-        const sx=(((raw%uvTile)+uvTile)%uvTile)|0;
-        if(sx<-40||sx>W+40)continue;
-        const col=UV[Math.floor(wx/80)%UV.length];
-        const pulse=(Math.sin(ct*0.04+wx*0.07)*0.5+0.5);
-        // свечение
-        ctx.globalAlpha=a*(0.08+pulse*0.10);
-        px(sx-18,wy-18,36,36,col);
-        ctx.globalAlpha=a*(0.7+pulse*0.2);
-        if(ut==='eye'){
-          // Большой глаз — внешний контур
-          px(sx-11,wy,22,2,col);px(sx-13,wy-2,26,2,col);
-          px(sx-14,wy-4,4,2,col);px(sx+10,wy-4,4,2,col);
-          px(sx-13,wy+2,26,2,col);px(sx-11,wy+4,22,2,col);
-          // зрачок
-          px(sx-4,wy-4,8,8,col);px(sx-2,wy-6,4,2,col);px(sx-2,wy+4,4,2,col);
-          // блик
-          ctx.globalAlpha=a*0.9;px(sx-2,wy-3,2,2,'#ffffff');
-          // радужка
-          ctx.globalAlpha=a*0.4;px(sx-6,wy-2,12,4,col);
-        }else if(ut==='spiral'){
-          // Концентрические прямоугольники
-          for(let r=2;r<=12;r+=4){
-            px(sx-r,wy-r,r*2,1,col);px(sx-r,wy+r-1,r*2,1,col);
-            px(sx-r,wy-r,1,r*2,col);px(sx+r-1,wy-r,1,r*2,col);
-          }
-          // центр
-          px(sx-2,wy-2,4,4,col);
-        }else if(ut==='figure'){
-          // Странная вытянутая фигура
-          px(sx-4,wy-20,8,6,col);  // голова
-          px(sx-2,wy-14,4,12,col); // шея+тело
-          px(sx-10,wy-12,8,2,col);px(sx+2,wy-12,8,2,col); // руки
-          px(sx-2,wy-10,1,2,col);px(sx+1,wy-10,1,2,col); // пальцы
-          px(sx-3,wy-2,3,10,col);px(sx,wy-2,3,10,col); // ноги
-          // лицо — косые глаза
-          px(sx-3,wy-18,2,2,col);px(sx+1,wy-18,2,2,col);
-          px(sx-2,wy-15,4,1,col);
-        }else if(ut==='face'){
-          // Жуткое лицо без нормальных черт
-          // контур
-          px(sx-8,wy-8,16,2,col);px(sx-10,wy-6,20,2,col);
-          px(sx-10,wy+6,20,2,col);px(sx-8,wy+8,16,2,col);
-          px(sx-10,wy-6,2,14,col);px(sx+8,wy-6,2,14,col);
-          // X-глаза
-          px(sx-6,wy-4,2,2,col);px(sx-4,wy-2,2,2,col);
-          px(sx-4,wy-4,2,2,col);px(sx-6,wy-2,2,2,col);
-          px(sx+2,wy-4,2,2,col);px(sx+4,wy-2,2,2,col);
-          px(sx+4,wy-4,2,2,col);px(sx+2,wy-2,2,2,col);
-          // рот-зигзаг
-          for(let m=-5;m<=5;m++)px(sx+m,wy+3+(m%2===0?0:2),1,3,col);
-        }
-        ctx.globalAlpha=a;
-      }
       ctx.globalAlpha=1;
     }
   }
@@ -1711,55 +1622,6 @@ export function startGame(
     ctx.globalAlpha=1;
   }
 
-  function drawDrop(dx:number){
-    // Капля из бэкрумса — желтовато-зелёная слизь, пульсирует
-    const bY=GY, x=dx|0;
-    const pulse=(Math.sin(ct*0.18)*0.5+0.5);
-    const drip=(Math.sin(ct*0.28)*4)|0;
-    // светящийся ореол
-    ctx.globalAlpha=0.18+pulse*0.14;
-    const grd=ctx.createRadialGradient(x,bY-16,2,x,bY-16,28);
-    grd.addColorStop(0,'rgba(200,200,30,0.7)');grd.addColorStop(1,'rgba(200,200,30,0)');
-    ctx.fillStyle=grd;ctx.fillRect(x-28,bY-44,56,56);
-    ctx.globalAlpha=1;
-    // тело капли — неправильная форма
-    px(x-8,bY-28+drip,17,20,'#c8b820');      // основа
-    px(x-10,bY-22+drip,21,12,'#d4c828');     // широкая часть
-    px(x-7,bY-32+drip,14,6,'#b8a818');       // верхушка
-    px(x-4,bY-34+drip,9,3,'#a89010');        // самый верх
-    // внутреннее свечение (ядро)
-    ctx.globalAlpha=0.55+pulse*0.3;
-    px(x-5,bY-26+drip,11,14,'#f0e030');
-    ctx.globalAlpha=1;
-    // жёлтые «глаза» — пустые дыры
-    px(x-5,bY-26+drip,3,3,'#181408');px(x+2,bY-26+drip,3,3,'#181408');
-    px(x-4,bY-26+drip,2,2,'#000');px(x+3,bY-26+drip,2,2,'#000');
-    // нижние сопли (потёки)
-    px(x-3,bY-8+drip,2,10,'#a89010');px(x+1,bY-6+drip,2,8,'#c8b020');px(x+4,bY-9+drip,2,6,'#b0a018');
-    px(x-6,bY-5+drip,2,5,'#a89010');
-    // зловещее свечение снизу
-    ctx.globalAlpha=0.22+pulse*0.18;px(x-12,bY-4,26,6,'#d4c820');ctx.globalAlpha=1;
-  }
-
-  function drawEscapeHole(hx:number){
-    // Дырка для побега — тёмный провал в полу с зелёным мерцанием
-    const x=hx|0, bY=GY;
-    const pulse=(Math.sin(ct*0.22)*0.5+0.5);
-    // ямка в полу
-    ctx.globalAlpha=0.6;px(x-14,bY,28,H-bY,'#000');ctx.globalAlpha=1;
-    // контур дырки
-    px(x-14,bY,28,3,C.bkrFloorDk);px(x-14,bY,3,H-bY,'#000');px(x+11,bY,3,H-bY,'#000');
-    // зелёное свечение из глубины
-    ctx.globalAlpha=0.25+pulse*0.25;
-    const grd=ctx.createRadialGradient(x,bY+12,1,x,bY+12,22);
-    grd.addColorStop(0,'rgba(60,220,60,0.8)');grd.addColorStop(1,'rgba(60,220,60,0)');
-    ctx.fillStyle=grd;ctx.fillRect(x-22,bY,44,30);
-    ctx.globalAlpha=1;
-    // стрелка «вниз»
-    ctx.globalAlpha=0.7+pulse*0.3;
-    txt('↓',x+1,bY-4,'#40ff40',8,'center','#000');
-    ctx.globalAlpha=1;
-  }
 
   function drawSwordItem(x:number,y:number){
     x|=0;y|=0;
@@ -2502,53 +2364,6 @@ export function startGame(
       // лицо
       px(x-3,bY-31,7,5,C.skin);px(x-2,bY-29,2,2,'#200808');px(x+1,bY-29,2,2,'#200808');
       px(x-2,bY-27,5,1,'#402010'); // усы и бакенбарды
-    }else if(ob.type==='bkr_entity'){
-      // Сущность бэкрумса — тёмная высокая фигура без чёрт лица
-      const ph=Math.sin(ob.bob*0.5),lA=(ph*2)|0,lB=(-ph*2)|0;
-      ctx.globalAlpha=0.85;
-      px(x-7,bY-1,14,2,'rgba(0,0,0,0.5)');
-      // ноги
-      px(x-4,bY-10+lA,3,10,C.bkrEntity);px(x+1,bY-10+lB,3,10,C.bkrEntity);
-      // тело — вытянутое
-      px(x-4,bY-26,9,16,C.bkrEntity);px(x-4,bY-26,9,2,C.bkrEntityHi);px(x+3,bY-24,2,14,'#000');
-      // длинные руки
-      px(x-11,bY-22,8,2,C.bkrEntity);px(x-12,bY-24,3,4,C.bkrEntity);
-      px(x+5,bY-22,8,2,C.bkrEntity);px(x+11,bY-24,3,4,C.bkrEntity);
-      // голова — почти без лица, тёмная
-      px(x-5,bY-34,10,8,C.bkrEntity);px(x-4,bY-35,8,2,C.bkrEntityHi);px(x+3,bY-33,2,7,'#000');
-      // пустые глаза — чуть светлее
-      ctx.globalAlpha=0.4;px(x-3,bY-31,2,2,C.bkrWallDk);px(x+1,bY-31,2,2,C.bkrWallDk);ctx.globalAlpha=0.85;
-      ctx.globalAlpha=1;
-    }else if(ob.type==='bkr_light'){
-      // Упавший флуоресцентный светильник — лежит на полу
-      const flicker=(Math.sin(ob.bob*7)*0.5+0.5);
-      px(x-9,bY-1,18,2,'rgba(0,0,0,0.3)');
-      px(x-9,bY-8,18,7,C.bkrWallDk);px(x-9,bY-8,18,1,C.bkrWall);
-      ctx.globalAlpha=0.5+flicker*0.4;
-      px(x-8,bY-7,16,5,C.bkrLight);ctx.globalAlpha=0.3+flicker*0.3;px(x-10,bY-10,20,12,C.bkrLight);
-      ctx.globalAlpha=1;
-      px(x-4,bY-8,1,4,'#605820');px(x+3,bY-8,1,4,'#605820');
-    }else if(ob.type==='bkr_tv'){
-      // Телевизор с белым экраном — стоит на полу
-      const flicker=(Math.sin(ob.bob*11)*0.5+0.5);
-      px(x-13,bY-1,26,2,'rgba(0,0,0,0.35)');
-      // корпус (серо-бежевый)
-      px(x-13,bY-22,26,22,C.bkrWallDk);px(x-12,bY-23,24,2,C.bkrWall);
-      px(x-13,bY-22,2,22,C.bkrWall);px(x+11,bY-22,2,22,'#707048');
-      // экран — белый, мерцает
-      ctx.globalAlpha=0.75+flicker*0.25;
-      px(x-10,bY-20,20,14,C.bkrLight);
-      ctx.globalAlpha=1;
-      // помехи — горизонтальные полосы
-      ctx.globalAlpha=0.12+flicker*0.25;
-      for(let s=0;s<3;s++)px(x-10,bY-20+s*4+((Math.floor(ob.bob*4))%4),20,2,'#000');
-      ctx.globalAlpha=1;
-      // свечение от экрана
-      ctx.globalAlpha=(0.15+flicker*0.2);px(x-14,bY-24,28,26,C.bkrLight);ctx.globalAlpha=1;
-      // ножка и антенна
-      px(x-2,bY-1,4,2,C.bkrWallDk);
-      px(x-5,bY-22,1,8,'#909060');px(x+4,bY-22,1,10,'#909060');
-      px(x-6,bY-30,1,9,'#a0a070');px(x+5,bY-28,1,8,'#a0a070');
     }
   }
 
@@ -2874,17 +2689,56 @@ export function startGame(
   }
   function drawQuestPanel(){
     if(activeQuests.length===0)return;
-    const qx=5,qy=70,qw=90,qh=9;
-    px(qx-1,qy-1,qw+2,activeQuests.length*qh+2,'rgba(6,2,14,0.80)');
-    px(qx-1,qy-1,qw+2,1,'#2a1858');
+    const qx=4,qy=60,qw=136,qh=14;
+    px(qx-2,qy-3,qw+4,activeQuests.length*qh+5,'rgba(4,1,12,0.88)');
+    px(qx-2,qy-3,qw+4,1,'#4a2888');
     for(let i=0;i<activeQuests.length;i++){
       const q=activeQuests[i],y=qy+i*qh;
-      const isDone=q.done,prog=Math.min(1,q.progress/q.target);
-      if(!isDone&&prog>0){px(qx,y+qh-2,Math.floor(qw*prog),2,'#3a2878');px(qx,y+qh-2,Math.floor(qw*prog),1,'#6050b8');}
-      const col=isDone?'#ffe840':'#a090c8';
-      txt(isDone?'✓ ГОТОВО':q.icon+' '+q.desc,qx+2,y+6,col,5,'left','#000');
-      if(!isDone)txt(q.progress+'/'+q.target,qx+qw-2,y+6,'#6858a8',5,'right','#000');
+      const prog=Math.min(1,q.progress/q.target);
+      if(q.done){
+        txt('✓ '+q.desc,qx+3,y+10,'#ffe840',7,'left','#000');
+      }else{
+        // иконка + текст слева, счётчик справа — одна строка
+        const counter=q.progress+'/'+q.target;
+        ctx.font=`bold 7px ${PF}`;
+        const cw=ctx.measureText(counter).width+2;
+        txt(q.icon+' '+q.desc,qx+3,y+10,'#d8c8ff',7,'left','#000',qw-cw-6);
+        txt(counter,qx+qw-1,y+10,'#8070c0',7,'right','#000');
+        // тонкая полоска прогресса
+        px(qx+2,y+12,qw-4,2,'rgba(30,14,60,0.8)');
+        if(prog>0)px(qx+2,y+12,Math.floor((qw-4)*prog),2,'#7060c0');
+      }
     }
+  }
+  function drawTutorial(){
+    if(tutStep===0||tutStep>TUT_STEPS.length)return;
+    const s=TUT_STEPS[tutStep-1];
+    const fadeIn=Math.min(1,tutTimer/20);
+    const fadeOut=tutTimer>TUT_AUTO-40?Math.max(0,(TUT_AUTO-tutTimer)/40):1;
+    const alpha=fadeIn*fadeOut;
+    if(alpha<=0)return;
+    const BW=186,BH=38;
+    const bx=((W-BW)/2)|0,by=96;
+    // фон
+    ctx.globalAlpha=alpha*0.92;
+    px(bx,by,BW,BH,'rgba(4,1,14,0.95)');
+    // рамка — оранжевая как тыква
+    ctx.globalAlpha=alpha;
+    px(bx,by,BW,2,'#ef8a1c');px(bx,by+BH-2,BW,2,'#ef8a1c');
+    px(bx,by,2,BH,'#ef8a1c');px(bx+BW-2,by,2,BH,'#ef8a1c');
+    // иконка
+    const blink=Math.sin(ct*0.18)*0.35+0.65;
+    ctx.globalAlpha=alpha*blink;
+    txt(s.icon,bx+18,by+24,'#ef8a1c',14,'center','#000');
+    ctx.globalAlpha=alpha;
+    // текст — две строки
+    txt(s.line1,bx+BW/2+8,by+16,'#ffe8a0',8,'center','#1a0800');
+    txt(s.line2,bx+BW/2+8,by+29,'#c8b0e0',7,'center','#1a0800');
+    // прогресс-бар авто-перехода
+    const pp=Math.min(1,tutTimer/TUT_AUTO);
+    ctx.globalAlpha=alpha*0.5;
+    px(bx+2,by+BH-4,Math.floor((BW-4)*pp),2,'#ef8a1c');
+    ctx.globalAlpha=1;
   }
   function drawLevelUp(){
     drawOverlay();
@@ -2953,21 +2807,6 @@ export function startGame(
       txt('ШАХТА',W/2,56,C.mineTorch,9,'center','#1a0800');
       ctx.globalAlpha=1;
     }
-    if(backrooms>=61&&backrooms<=420){
-      const a=backrooms<=120?(backrooms-61)/59:backrooms>=361?1-(backrooms-361)/59:1;
-      ctx.globalAlpha=Math.max(0,Math.min(1,a));
-      px(0,0,W,H,'rgba(20,18,0,0.25)'); // жёлтый оттенок
-      if(dropActive&&!dropKill){
-        // Прогресс-бар угрозы капли
-        const threat=Math.max(0,Math.min(1,(dropX+200)/254));
-        const bw=100,bx=(W/2-50)|0;
-        px(bx-1,H-14,bw+2,10,'rgba(20,18,0,0.9)');
-        ctx.fillStyle=`rgb(${(180+threat*75)|0},${(180-threat*140)|0},0)`;
-        ctx.fillRect(bx,H-13,bw*threat,8);
-        txt('КАПЛЯ',W/2,H-6,threat>0.8?C.britRed:'#c8b820',5,'center','#000');
-      }
-      ctx.globalAlpha=1;
-    }
     if(speedFlash>0){
       const t2=speedFlash/120,sc=t2>0.85?1+(1-t2/0.85)*0.45:1;
       ctx.save();ctx.globalAlpha=Math.min(1,t2*3);ctx.translate(W/2,H/2-18);ctx.scale(sc,sc);
@@ -3014,8 +2853,8 @@ export function startGame(
       // усы правые
       px(fx+20,fy+11,7,1,'#bbb');px(fx+19,fy+13,9,1,'#bbb');px(fx+20,fy+15,6,1,'#bbb');
       // текст МЯЯУ справа от мордочки
-      ctx.font=`6px 'Press Start 2P',monospace`;ctx.textAlign='left';
-      ctx.fillStyle='#1a0830';ctx.fillText('МЯУ!',px0+27,drawY+10);ctx.fillText('МЯУ!',px0+27,drawY+10);
+      ctx.font=`bold 7px ${PF}`;ctx.textAlign='left';
+      ctx.fillStyle='#1a0830';ctx.fillText('МЯУ!',px0+27,drawY+10);
       ctx.fillStyle='#f0c8ff';ctx.fillText('МЯУ!',px0+27,drawY+10);
       ctx.fillStyle='#1a0830';ctx.fillText('SUPER!',px0+27,drawY+20);
       ctx.fillStyle='#ffe080';ctx.fillText('SUPER!',px0+27,drawY+20);
@@ -3072,8 +2911,8 @@ export function startGame(
     drawOverlay();
     drawPumpkinHead(W/2,52);px(W/2-10,42,20,12,C.pumpkin);px(W/2-12,45,24,8,C.pumpkin);
     centerText([
-      {t:'СОРВИ ГОЛОВА',size:11,col:C.pumpkin,gap:16},
-      {t:'Безголовый всадник',size:7,col:'#c8b0e8',gap:20},
+      {t:'БЕЗГОЛОВЫЙ ВСАДНИК',size:11,col:C.pumpkin,gap:16},
+      {t:'ENDLESS RUNNER',size:7,col:'#c8b0e8',gap:20},
     ],52);
     // Два пункта меню
     const items=['ИГРАТЬ','ТАБЛИЦА ЛИДЕРОВ'];
@@ -3089,9 +2928,9 @@ export function startGame(
   }
   function drawDead(){
     drawOverlay();
-    const deathMsg=dropKill?'КАПЛЯ РАЗОРВАЛА!':'СОРВИ ГОЛОВА ПАЛ';
-    const deathCol=dropKill?'#c8c820':'#e85a5a';
-    const deathSub=dropKill?'Бэкрумс забрал тебя...':'Ворона улетела...';
+    const deathMsg='БЕЗГОЛОВЫЙ ВСАДНИК ПАЛ';
+    const deathCol='#e85a5a';
+    const deathSub='Ворона улетела...';
     centerText([{t:deathMsg,size:11,col:deathCol,gap:20},{t:'ПУТЬ: '+Math.floor(distance)+'M',size:7,gap:14},{t:'РЕКОРД: '+best+'M',size:7,col:'#a090d0',gap:18},{t:deathSub,size:7,col:'#9070b0',gap:17},{t:'>> НАЖМИ ЧТОБЫ СНОВА <<',size:7,col:'#ffe08a',gap:10}],52);
   }
 
@@ -3125,6 +2964,7 @@ export function startGame(
     ctx.globalAlpha=1;
   }
   function render(){
+    if(state===ST.MENU)camX=mCamX;
     drawBG();
     for(const g of zoneGates)drawZoneGate(g);
     drawCrowFull(crow.x,crow.y);
@@ -3136,12 +2976,11 @@ export function startGame(
     for(const ld of lootDrops)drawLootDrop(ld);
     drawLootFloats();
     drawDust();drawGhostParticles();drawSwordParticles();
-    // Дырка и капля — рисуем ПОВЕРХ препятствий и под героем
-    if(holeActive)drawEscapeHole(holeX);
-    if(dropActive&&!dropKill)drawDrop(dropX);
+    if(state===ST.MENU)drawMenuDemo();
     if(state===ST.PLAY||state===ST.DEAD||state===ST.LEVELUP){if(hero.mounted)drawHeroOnHorse(hero.x,hero.y);else drawHeroOnFoot(hero.x,hero.y);}
     if(state===ST.PLAY||state===ST.LEVELUP)drawPumpkinLight();
     if(state===ST.PLAY)drawHUD();
+    if(state===ST.PLAY)drawTutorial();
     if(state===ST.MENU)drawMenu();
     if(state===ST.DEAD)drawDead();
     if(state===ST.LEVELUP)drawLevelUp();

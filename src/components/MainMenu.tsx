@@ -11,7 +11,7 @@ interface Props {
   onSignOut: () => void;
 }
 
-const F = "'Press Start 2P','Courier New',monospace";
+const F = "'Segoe UI','Arial',sans-serif";
 
 const rankColor = (i: number) =>
   i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#a090c8';
@@ -147,6 +147,13 @@ export function MainMenu({ user, onPlay, onAuth, onSignOut }: Props) {
             <div style={{ color: '#6040a0', fontSize: 11 }}>ЗАГРУЗКА...</div>
           ) : (
             <table style={{ borderCollapse: 'collapse', fontSize: 10, width: '100%', maxWidth: 360 }}>
+              <thead>
+                <tr>
+                  <th style={{ color: '#6040a0', padding: '4px 12px', textAlign: 'left', fontWeight: 'normal', fontSize: 9, borderBottom: '1px solid #2a1a4a' }}>#</th>
+                  <th style={{ color: '#6040a0', padding: '4px 8px', textAlign: 'left', fontWeight: 'normal', fontSize: 9, borderBottom: '1px solid #2a1a4a' }}>НИК</th>
+                  <th style={{ color: '#6040a0', padding: '4px 12px', textAlign: 'right', fontWeight: 'normal', fontSize: 9, borderBottom: '1px solid #2a1a4a' }}>М</th>
+                </tr>
+              </thead>
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.id} style={{ borderBottom: '1px solid #2a1a4a' }}>

@@ -3,7 +3,12 @@ import { startGame } from '../game/engine';
 import { supabase } from '../lib/supabase';
 import { censorText } from '../lib/censor';
 
+const PUMPKIN_SYSTEM = `Ты — говорящая тыква. Ты голова Безголового всадника, горишь изнутри оранжевым огнём.
+Пиши ТОЛЬКО на русском языке. Отвечай ОЧЕНЬ коротко: максимум 1-2 предложения.
+Говори в характере мрачновато-весёлого тыквенного духа — жуткий, но верный своему всаднику.`;
+
 const W = 320, H = 180;
+const FONT = "'Segoe UI','Arial',sans-serif";
 const BEST_KEY = 'headless_best';
 const NICK_KEY = 'headless_nick';
 
@@ -15,9 +20,9 @@ interface Props {
 }
 
 export function Game({ onSignOut }: Props) {
-  const cvRef   = useRef<HTMLCanvasElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const gameRef = useRef<ReturnType<typeof startGame> | null>(null);
+  const cvRef      = useRef<HTMLCanvasElement>(null);
+  const wrapRef    = useRef<HTMLDivElement>(null);
+const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
 
   const [scale, setScale]             = useState(1);
   const [showLB, setShowLB]           = useState(false);
@@ -30,6 +35,11 @@ export function Game({ onSignOut }: Props) {
   const [rows, setRows]               = useState<LeaderRow[]>([]);
   const [myRank, setMyRank]           = useState<number | null>(null);
   const [loadingLB, setLoadingLB]     = useState(false);
+  const [pumpkinMsg, setPumpkinMsg]   = useState<string | null>(null);
+  const [typedMsg, setTypedMsg]       = useState<string>('');
+  const [subVisible, setSubVisible]   = useState(false);
+  const pumpkinHideRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingRef       = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const getBest  = useCallback(() => parseInt(localStorage.getItem(BEST_KEY) ?? '0', 10), []);
   const saveBest = useCallback((n: number) => { localStorage.setItem(BEST_KEY, String(n)); }, []);
@@ -38,12 +48,12 @@ export function Game({ onSignOut }: Props) {
     function resize() {
       const cv = cvRef.current; const wrap = wrapRef.current;
       if (!cv || !wrap) return;
-      const s = Math.max(1, Math.floor(Math.min(window.innerWidth / W, window.innerHeight / H)));
+      const s = Math.min(window.innerWidth / W, window.innerHeight / H);
       setScale(s);
-      cv.style.width  = `${W * s}px`;
-      cv.style.height = `${H * s}px`;
-      wrap.style.width  = `${W * s}px`;
-      wrap.style.height = `${H * s}px`;
+      cv.style.width  = `${window.innerWidth}px`;
+      cv.style.height = `${window.innerHeight}px`;
+      wrap.style.width  = `${window.innerWidth}px`;
+      wrap.style.height = `${window.innerHeight}px`;
     }
     resize();
     window.addEventListener('resize', resize);
@@ -96,13 +106,51 @@ export function Game({ onSignOut }: Props) {
     fetchLeaderboard();
   }, [fetchLeaderboard]);
 
+  const onPumpkinSpeak = useCallback(async (info: { event: string; distance: number; hp: number; maxHp: number; isJoke: boolean }) => {
+    const { distance, hp, maxHp, isJoke } = info;
+    const prompt = isJoke
+      ? `Всадник проехал ${distance}м, у него ${hp}/${maxHp} HP. Пошути над ним — мягко и немного злорадно.`
+      : `Всадник проехал ${distance}м, у него ${hp}/${maxHp} HP. Подбодри его!`;
+    try {
+      const { data } = await supabase.functions.invoke('ai', { body: { prompt, system: PUMPKIN_SYSTEM } });
+      const text: string = data?.text;
+      if (!text) return;
+
+      // Сбросить предыдущее
+      if (pumpkinHideRef.current) clearTimeout(pumpkinHideRef.current);
+      if (typingRef.current) clearInterval(typingRef.current);
+
+      const full = text.trim();
+      setPumpkinMsg(full);
+      setTypedMsg('');
+      setSubVisible(true);
+
+      // Печатать посимвольно
+      let i = 0;
+      typingRef.current = setInterval(() => {
+        i++;
+        setTypedMsg(full.slice(0, i));
+        if (i >= full.length) {
+          if (typingRef.current) clearInterval(typingRef.current);
+          typingRef.current = null;
+        }
+      }, 35);
+
+      // Скрыть через 7 сек
+      pumpkinHideRef.current = setTimeout(() => {
+        setSubVisible(false);
+        setTimeout(() => { setPumpkinMsg(null); setTypedMsg(''); }, 400);
+      }, 7000);
+    } catch { /* тихо игнорируем ошибки AI */ }
+  }, []);
+
   useEffect(() => {
     const cv = cvRef.current;
     if (!cv) return;
-    const game = startGame(cv, getBest, saveBest, onDeath, onOpenLeaderboard);
+    const game = startGame(cv, getBest, saveBest, onDeath, onOpenLeaderboard, onPumpkinSpeak);
     gameRef.current = game;
     return game.stop;
-  }, [getBest, saveBest, onDeath, onOpenLeaderboard]);
+  }, [getBest, saveBest, onDeath, onOpenLeaderboard, onPumpkinSpeak]);
 
   // обновить ник в уже записанной строке
   const handleUpdateNick = async () => {
@@ -120,6 +168,7 @@ export function Game({ onSignOut }: Props) {
     setShowLB(false);
     gameRef.current?.restart();
   };
+
 
   const px = (n: number) => `${n * scale}px`;
   const rankColor = (i: number) =>
@@ -141,12 +190,41 @@ export function Game({ onSignOut }: Props) {
           style={{ display:'block', imageRendering:'pixelated', cursor:'crosshair', filter:'saturate(1.4) contrast(1.08) brightness(1.03)' }}
         />
 
+        {pumpkinMsg && !showLB && (
+          <div style={{
+            position:'absolute', left:0, right:0, bottom:px(10),
+            display:'flex', justifyContent:'center', alignItems:'flex-end',
+            pointerEvents:'none', zIndex:10,
+            opacity: subVisible ? 1 : 0,
+            transition:'opacity 0.4s ease',
+          }}>
+            <div style={{
+              background:'rgba(4,1,10,0.88)',
+              border:`${px(1)} solid rgba(239,138,28,0.6)`,
+              borderRadius:px(3),
+              padding:`${px(3)} ${px(8)}`,
+              maxWidth:px(290),
+              color:'#ffd84a',
+              fontSize:px(5),
+              fontFamily:FONT,
+              lineHeight:1.9,
+              textAlign:'center',
+              wordBreak:'break-word',
+              boxShadow:`0 0 ${px(14)} rgba(239,138,28,0.4), inset 0 0 ${px(6)} rgba(255,180,0,0.05)`,
+              letterSpacing:'0.04em',
+              textShadow:`0 0 ${px(6)} #ef8a1c`,
+            }}>
+              {'🎃 '}{typedMsg}
+            </div>
+          </div>
+        )}
+
         {showLB && (
           <div style={{
             position:'absolute', inset:0,
             background:'rgba(6,3,14,0.93)',
             display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-start',
-            overflowY:'auto', fontFamily:"'Press Start 2P','Courier New',monospace",
+            overflowY:'auto', fontFamily:FONT,
             color:'#e0d0ff', padding:`${px(8)} ${px(6)}`,
             boxSizing:'border-box', gap:px(4), fontSize:px(5), lineHeight:'1.7',
           }}>
@@ -188,6 +266,9 @@ export function Game({ onSignOut }: Props) {
                   >
                     {nickSaving ? '...' : nickSaved ? 'СОХРАНЕНО!' : 'ИЗМЕНИТЬ НИК'}
                   </button>
+                  <button style={btnStyle('#ffb040', '#1a0a00')} onClick={handleRestart}>
+                    ▶ ИГРАТЬ СНОВА
+                  </button>
                 </div>
               </>
             )}
@@ -196,6 +277,13 @@ export function Game({ onSignOut }: Props) {
               <div style={{ color:'#6040a0' }}>ЗАГРУЗКА...</div>
             ) : (
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:px(4) }}>
+                <thead>
+                  <tr>
+                    <th style={{ color:'#6040a0', padding:`${px(1)} ${px(3)}`, textAlign:'left', fontWeight:'normal', fontSize:px(3.5), borderBottom:`${px(1)} solid #2a1a4a` }}>#</th>
+                    <th style={{ color:'#6040a0', padding:`${px(1)} ${px(2)}`, textAlign:'left', fontWeight:'normal', fontSize:px(3.5), borderBottom:`${px(1)} solid #2a1a4a` }}>НИК</th>
+                    <th style={{ color:'#6040a0', padding:`${px(1)} ${px(3)}`, textAlign:'right', fontWeight:'normal', fontSize:px(3.5), borderBottom:`${px(1)} solid #2a1a4a` }}>М</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={r.id} style={{ borderBottom:`${px(1)} solid #2a1a4a` }}>
@@ -219,24 +307,20 @@ export function Game({ onSignOut }: Props) {
               </table>
             )}
 
-            {lbMode === 'menu'
-              ? <button style={btnStyle('#a0c8ff', '#000a1a')} onClick={() => setShowLB(false)}>
-                  ✕ ЗАКРЫТЬ
-                </button>
-              : <button style={btnStyle('#ffb040', '#1a0a00')} onClick={handleRestart}>
-                  ▶ ИГРАТЬ СНОВА
-                </button>
-            }
+            {lbMode === 'menu' && (
+              <button style={btnStyle('#a0c8ff', '#000a1a')} onClick={() => setShowLB(false)}>
+                ✕ ЗАКРЫТЬ
+              </button>
+            )}
           </div>
         )}
+<button
+          onClick={onSignOut}
+          style={{ position:'absolute', top:px(4), right:px(4), padding:`${px(2)} ${px(5)}`, background:'rgba(4,1,12,0.75)', border:`1px solid #3a2060`, borderRadius:px(2), color:'#5a4888', fontSize:px(4), cursor:'pointer', fontFamily:FONT, zIndex:20 }}
+        >
+          ВЫЙТИ
+        </button>
       </div>
-
-      <button
-        onClick={onSignOut}
-        style={{ marginTop:10, padding:'4px 14px', background:'transparent', border:'1px solid #3a2060', borderRadius:8, color:'#7a60a8', fontSize:11, cursor:'pointer', fontFamily:"'Press Start 2P',monospace" }}
-      >
-        ВЫЙТИ
-      </button>
     </div>
   );
 }

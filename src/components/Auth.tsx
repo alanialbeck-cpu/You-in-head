@@ -6,7 +6,7 @@ interface Props {
   onSuccess: () => void;
 }
 
-const F = "'Press Start 2P','Courier New',monospace";
+const F = "'Segoe UI','Arial',sans-serif";
 
 export function Auth({ onBack, onSuccess }: Props) {
   const [email, setEmail] = useState('');
