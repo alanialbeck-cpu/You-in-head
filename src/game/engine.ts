@@ -205,6 +205,8 @@ export function startGame(
   ];
   let activeQuests: Quest[] = [];
   let usedQuestIds = new Set<string>();
+  let questPanelOpen = true;
+  let questPanelAnim = 1;
   // уровень-апгрейд — 3 варианта на выбор
   interface Upgrade { id:string; label:string; desc:string; col:string }
   const ALL_UPGRADES: Upgrade[] = [
@@ -350,6 +352,11 @@ export function startGame(
   }
 
   function onKeyDown(e:KeyboardEvent){
+    if(e.code==='Tab'&&!e.repeat){
+      e.preventDefault();
+      if(state===ST.PLAY)questPanelOpen=!questPanelOpen;
+      return;
+    }
     if(state===ST.MENU){
       if(e.code==='ArrowDown'||e.code==='KeyS'){menuSel=(menuSel+1)%2;return;}
       if(e.code==='ArrowUp'  ||e.code==='KeyW'){menuSel=(menuSel+1)%2;return;}
@@ -603,7 +610,12 @@ export function startGame(
 
   function update(){
     ct++;
+<<<<<<< HEAD
     if(state===ST.MENU){updateMenuDemo();return;}
+=======
+    if(questPanelOpen)questPanelAnim=Math.min(1,questPanelAnim+0.15);
+    else questPanelAnim=Math.max(0,questPanelAnim-0.15);
+>>>>>>> aa3ee00 (Add Tab toggle for quest panel)
     if(state!==ST.PLAY)return;
     if(speed<3.5)speed=Math.min(3.5,speed+0.0006);
     const eff=hero.mounted?(sprintActive>0?speed*2.5:speed*1.22):speed;
@@ -2688,10 +2700,19 @@ export function startGame(
     txt('Lv'+level,bx+bw+4,by+6,'#c0a0f0',6,'left','#0a0418');
   }
   function drawQuestPanel(){
+<<<<<<< HEAD
     if(activeQuests.length===0)return;
     const qx=4,qy=60,qw=136,qh=14;
     px(qx-2,qy-3,qw+4,activeQuests.length*qh+5,'rgba(4,1,12,0.88)');
     px(qx-2,qy-3,qw+4,1,'#4a2888');
+=======
+    if(activeQuests.length===0||questPanelAnim<=0)return;
+    const qx=5,qy=70,qw=90,qh=9;
+    const qxHidden = -qw + 12;
+    const x = Math.round(qxHidden + questPanelAnim * (qx - qxHidden));
+    px(x-1,qy-1,qw+2,activeQuests.length*qh+2,'rgba(6,2,14,0.80)');
+    px(x-1,qy-1,qw+2,1,'#2a1858');
+>>>>>>> aa3ee00 (Add Tab toggle for quest panel)
     for(let i=0;i<activeQuests.length;i++){
       const q=activeQuests[i],y=qy+i*qh;
       const prog=Math.min(1,q.progress/q.target);
