@@ -3,6 +3,39 @@ import { startGame } from '../game/engine';
 import { supabase } from '../lib/supabase';
 import { censorText } from '../lib/censor';
 
+interface MobileButtonProps {
+  label: string;
+  onPointerDown: () => void;
+  onPointerUp: () => void;
+  style?: React.CSSProperties;
+}
+
+function MobileButton({ label, onPointerDown, onPointerUp, style }: MobileButtonProps) {
+  return (
+    <button
+      type="button"
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+      onPointerCancel={onPointerUp}
+      style={{
+        border: '2px solid rgba(255,255,255,0.28)',
+        borderRadius: 12,
+        background: 'rgba(4,1,12,0.72)',
+        color: '#f6e7a8',
+        fontSize: 14,
+        fontFamily: 'inherit',
+        padding: '10px 12px',
+        touchAction: 'none',
+        userSelect: 'none',
+        ...style,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 const PUMPKIN_SYSTEM = `Ты — говорящая тыква. Ты голова Безголового всадника, горишь изнутри оранжевым огнём.
 Пиши ТОЛЬКО на русском языке. Отвечай ОЧЕНЬ коротко: максимум 1-2 предложения.
 Говори в характере мрачновато-весёлого тыквенного духа — жуткий, но верный своему всаднику.`;
@@ -22,7 +55,7 @@ interface Props {
 export function Game({ onSignOut }: Props) {
   const cvRef      = useRef<HTMLCanvasElement>(null);
   const wrapRef    = useRef<HTMLDivElement>(null);
-const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
+  const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
 
   const [scale, setScale]             = useState(1);
   const [showLB, setShowLB]           = useState(false);
@@ -38,6 +71,8 @@ const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
   const [pumpkinMsg, setPumpkinMsg]   = useState<string | null>(null);
   const [typedMsg, setTypedMsg]       = useState<string>('');
   const [subVisible, setSubVisible]   = useState(false);
+  const [isMobile, setIsMobile]       = useState(false);
+  const [selectedMode, setSelectedMode] = useState<'desktop' | 'mobile' | null>(null);
   const pumpkinHideRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingRef       = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -50,6 +85,7 @@ const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
       if (!cv || !wrap) return;
       const s = Math.min(window.innerWidth / W, window.innerHeight / H);
       setScale(s);
+      setIsMobile(window.innerWidth <= 900 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent));
       cv.style.width  = `${window.innerWidth}px`;
       cv.style.height = `${window.innerHeight}px`;
       wrap.style.width  = `${window.innerWidth}px`;
@@ -106,6 +142,10 @@ const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
     fetchLeaderboard();
   }, [fetchLeaderboard]);
 
+  const sendMobileControl = useCallback((name: 'left' | 'right' | 'jump' | 'attack' | 'mount' | 'sprint', active: boolean) => {
+    window.dispatchEvent(new CustomEvent('headless-mobile-control', { detail: { name, active } }));
+  }, []);
+
   const onPumpkinSpeak = useCallback(async (info: { event: string; distance: number; hp: number; maxHp: number; isJoke: boolean }) => {
     const { distance, hp, maxHp, isJoke } = info;
     const prompt = isJoke
@@ -146,11 +186,11 @@ const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
 
   useEffect(() => {
     const cv = cvRef.current;
-    if (!cv) return;
-    const game = startGame(cv, getBest, saveBest, onDeath, onOpenLeaderboard, onPumpkinSpeak);
+    if (!cv || !selectedMode) return;
+    const game = startGame(cv, getBest, saveBest, onDeath, onOpenLeaderboard, onPumpkinSpeak, { mode: selectedMode });
     gameRef.current = game;
     return game.stop;
-  }, [getBest, saveBest, onDeath, onOpenLeaderboard, onPumpkinSpeak]);
+  }, [getBest, saveBest, onDeath, onOpenLeaderboard, onPumpkinSpeak, selectedMode]);
 
   // обновить ник в уже записанной строке
   const handleUpdateNick = async () => {
@@ -184,11 +224,50 @@ const gameRef    = useRef<ReturnType<typeof startGame> | null>(null);
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', width:'100vw', height:'100vh', background:'#09050f', overflow:'hidden' }}>
       <div ref={wrapRef} style={{ position:'relative' }}>
+        {!selectedMode && (
+          <div style={{
+            position:'absolute', inset:0, zIndex:30,
+            background:'rgba(4,1,12,0.92)',
+            display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+            gap:14, padding:20, boxSizing:'border-box',
+          }}>
+            <div style={{ color:'#ffb040', fontSize:px(7), textAlign:'center', textShadow:`0 0 ${px(4)} #ff8800` }}>
+              ВЫБЕРИ РЕЖИМ
+            </div>
+            <div style={{ color:'#c8b0e0', fontSize:px(4.5), textAlign:'center', maxWidth:px(100) }}>
+              На ПК — как обычно, на телефоне — облегчённый режим без лагов.
+            </div>
+            <div style={{ display:'flex', gap:12, flexWrap:'wrap', justifyContent:'center' }}>
+              <button style={btnStyle('#80ffb0', '#0a2a18')} onClick={() => setSelectedMode('desktop')}>
+                🖥 ПК / КЛАВИАТУРА
+              </button>
+              <button style={btnStyle('#ffb040', '#1a0a00')} onClick={() => setSelectedMode('mobile')}>
+                📱 ТЕЛЕФОН / ТАЧ
+              </button>
+            </div>
+          </div>
+        )}
+
         <canvas
           ref={cvRef}
           width={W} height={H}
           style={{ display:'block', imageRendering:'pixelated', cursor:'crosshair', filter:'saturate(1.4) contrast(1.08) brightness(1.03)' }}
         />
+
+        {isMobile && selectedMode === 'mobile' && !showLB && (
+          <div style={{
+            position:'absolute', inset:0, pointerEvents:'none', zIndex:12,
+          }}>
+            <div style={{ position:'absolute', left:16, bottom:16, display:'flex', gap:8, pointerEvents:'auto' }}>
+              <MobileButton label="◀" onPointerDown={() => sendMobileControl('left', true)} onPointerUp={() => sendMobileControl('left', false)} style={{ minWidth:46, minHeight:46 }} />
+              <MobileButton label="▶" onPointerDown={() => sendMobileControl('right', true)} onPointerUp={() => sendMobileControl('right', false)} style={{ minWidth:46, minHeight:46 }} />
+            </div>
+            <div style={{ position:'absolute', right:16, bottom:16, display:'flex', gap:8, pointerEvents:'auto' }}>
+              <MobileButton label="⚔" onPointerDown={() => sendMobileControl('attack', true)} onPointerUp={() => sendMobileControl('attack', false)} style={{ minWidth:54, minHeight:54 }} />
+              <MobileButton label="⚡" onPointerDown={() => sendMobileControl('jump', true)} onPointerUp={() => sendMobileControl('jump', false)} style={{ minWidth:54, minHeight:54 }} />
+            </div>
+          </div>
+        )}
 
         {pumpkinMsg && !showLB && (
           <div style={{

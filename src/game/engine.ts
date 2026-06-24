@@ -22,10 +22,12 @@ export function startGame(
   onDeath?: (score: number) => void,
   onOpenLeaderboard?: () => void,
   onPumpkinSpeak?: (info: { event: string; distance: number; hp: number; maxHp: number; isJoke: boolean }) => void,
+  opts?: { mode?: 'desktop' | 'mobile' },
 ): { stop: () => void; restart: () => void } {
   const ctx = cv.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
   const W = cv.width, H = cv.height, GY = 150;
+  const isMobileMode = opts?.mode === 'mobile';
   const bloomCv = document.createElement('canvas');
   bloomCv.width = W; bloomCv.height = H;
   const bCtx = bloomCv.getContext('2d')!;
@@ -137,7 +139,7 @@ export function startGame(
   ];
   let tutStep=localStorage.getItem(TUT_KEY)?0:1;
   let tutTimer=0;
-  const TUT_AUTO=300;
+  const TUT_AUTO=isMobileMode?220:300;
 
   function advTut(forStep:number){
     if(tutStep!==forStep)return;
@@ -402,12 +404,27 @@ export function startGame(
   function onTouch(e:TouchEvent){e.preventDefault();doJump();}
   function onTouchEnd(e:TouchEvent){e.preventDefault();endHold();}
 
+  function setMobileControl(name:'left'|'right'|'jump'|'attack'|'mount'|'sprint', active:boolean){
+    if(name==='left') moveLeft=active;
+    if(name==='right') moveRight=active;
+    if(name==='jump' && active) doJump();
+    if(name==='attack' && active) doSwordAttack();
+    if(name==='mount' && active) doMount();
+    if(name==='sprint' && active) doHorseSprint();
+  }
+
+  const onMobileControl = (e: Event) => {
+    const detail = (e as CustomEvent<{ name:'left'|'right'|'jump'|'attack'|'mount'|'sprint'; active:boolean }>).detail;
+    if(detail) setMobileControl(detail.name, detail.active);
+  };
+
   window.addEventListener('keydown',onKeyDown);
   window.addEventListener('keyup',onKeyUp);
   cv.addEventListener('mousedown',onMouseDown);
   cv.addEventListener('mouseup',onMouseUp);
   cv.addEventListener('touchstart',onTouch,{passive:false});
   cv.addEventListener('touchend',onTouchEnd,{passive:false});
+  window.addEventListener('headless-mobile-control', onMobileControl as EventListener);
 
   // ---- RPG Функции ----
   function initQuests(){
@@ -610,12 +627,9 @@ export function startGame(
 
   function update(){
     ct++;
-<<<<<<< HEAD
     if(state===ST.MENU){updateMenuDemo();return;}
-=======
     if(questPanelOpen)questPanelAnim=Math.min(1,questPanelAnim+0.15);
     else questPanelAnim=Math.max(0,questPanelAnim-0.15);
->>>>>>> aa3ee00 (Add Tab toggle for quest panel)
     if(state!==ST.PLAY)return;
     if(speed<3.5)speed=Math.min(3.5,speed+0.0006);
     const eff=hero.mounted?(sprintActive>0?speed*2.5:speed*1.22):speed;
@@ -2700,34 +2714,25 @@ export function startGame(
     txt('Lv'+level,bx+bw+4,by+6,'#c0a0f0',6,'left','#0a0418');
   }
   function drawQuestPanel(){
-<<<<<<< HEAD
-    if(activeQuests.length===0)return;
-    const qx=4,qy=60,qw=136,qh=14;
-    px(qx-2,qy-3,qw+4,activeQuests.length*qh+5,'rgba(4,1,12,0.88)');
-    px(qx-2,qy-3,qw+4,1,'#4a2888');
-=======
     if(activeQuests.length===0||questPanelAnim<=0)return;
-    const qx=5,qy=70,qw=90,qh=9;
+    const qx=4,qy=60,qw=136,qh=14;
     const qxHidden = -qw + 12;
     const x = Math.round(qxHidden + questPanelAnim * (qx - qxHidden));
-    px(x-1,qy-1,qw+2,activeQuests.length*qh+2,'rgba(6,2,14,0.80)');
-    px(x-1,qy-1,qw+2,1,'#2a1858');
->>>>>>> aa3ee00 (Add Tab toggle for quest panel)
+    px(x-2,qy-3,qw+4,activeQuests.length*qh+5,'rgba(4,1,12,0.88)');
+    px(x-2,qy-3,qw+4,1,'#4a2888');
     for(let i=0;i<activeQuests.length;i++){
       const q=activeQuests[i],y=qy+i*qh;
       const prog=Math.min(1,q.progress/q.target);
       if(q.done){
-        txt('✓ '+q.desc,qx+3,y+10,'#ffe840',7,'left','#000');
+        txt('✓ '+q.desc,x+3,y+10,'#ffe840',7,'left','#000');
       }else{
-        // иконка + текст слева, счётчик справа — одна строка
         const counter=q.progress+'/'+q.target;
         ctx.font=`bold 7px ${PF}`;
         const cw=ctx.measureText(counter).width+2;
-        txt(q.icon+' '+q.desc,qx+3,y+10,'#d8c8ff',7,'left','#000',qw-cw-6);
-        txt(counter,qx+qw-1,y+10,'#8070c0',7,'right','#000');
-        // тонкая полоска прогресса
-        px(qx+2,y+12,qw-4,2,'rgba(30,14,60,0.8)');
-        if(prog>0)px(qx+2,y+12,Math.floor((qw-4)*prog),2,'#7060c0');
+        txt(q.icon+' '+q.desc,x+3,y+10,'#d8c8ff',7,'left','#000',qw-cw-6);
+        txt(counter,x+qw-1,y+10,'#8070c0',7,'right','#000');
+        px(x+2,y+12,qw-4,2,'rgba(30,14,60,0.8)');
+        if(prog>0)px(x+2,y+12,Math.floor((qw-4)*prog),2,'#7060c0');
       }
     }
   }
@@ -3032,6 +3037,7 @@ export function startGame(
     cv.removeEventListener('mouseup',onMouseUp);
     cv.removeEventListener('touchstart',onTouch);
     cv.removeEventListener('touchend',onTouchEnd);
+    window.removeEventListener('headless-mobile-control', onMobileControl as EventListener);
   };
   const restart=()=>{awaitingRestart=false;resetGame();};
   return {stop,restart};
