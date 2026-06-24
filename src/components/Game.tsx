@@ -264,6 +264,7 @@ export function Game({ onSignOut }: Props) {
             </div>
             <div style={{ position:'absolute', right:16, bottom:16, display:'flex', gap:8, pointerEvents:'auto' }}>
               <MobileButton label="⚔" onPointerDown={() => sendMobileControl('attack', true)} onPointerUp={() => sendMobileControl('attack', false)} style={{ minWidth:54, minHeight:54 }} />
+              <MobileButton label="🦴" onPointerDown={() => sendMobileControl('mount', true)} onPointerUp={() => sendMobileControl('mount', false)} style={{ minWidth:54, minHeight:54 }} />
               <MobileButton label="⚡" onPointerDown={() => sendMobileControl('jump', true)} onPointerUp={() => sendMobileControl('jump', false)} style={{ minWidth:54, minHeight:54 }} />
             </div>
           </div>

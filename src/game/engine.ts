@@ -137,6 +137,12 @@ export function startGame(
     {icon:'🐴',line1:'E',               line2:'— СЕСТЬ НА КОНЯ'},
     {icon:'⚡',line1:'SHIFT',           line2:'— РЫВОК!'},
   ];
+  const MOBILE_TUT_STEPS=[
+    {icon:'⬆', line1:'ТАП ПО КНОПКЕ', line2:'— ПРЫЖОК'},
+    {icon:'⚔', line1:'ТАП ПО МЕЧУ',   line2:'— УДАР'},
+    {icon:'🦴', line1:'ТАП ПО ИКОНКЕ', line2:'— СЕСТЬ/ВСТАТЬ'},
+    {icon:'⚡', line1:'ТАП ПО РЫВКУ',  line2:'— СКОРОСТЬ'},
+  ];
   let tutStep=localStorage.getItem(TUT_KEY)?0:1;
   let tutTimer=0;
   const TUT_AUTO=isMobileMode?220:300;
@@ -209,6 +215,7 @@ export function startGame(
   let usedQuestIds = new Set<string>();
   let questPanelOpen = true;
   let questPanelAnim = 1;
+  let selectedQuestId: string | null = null;
   // уровень-апгрейд — 3 варианта на выбор
   interface Upgrade { id:string; label:string; desc:string; col:string }
   const ALL_UPGRADES: Upgrade[] = [
@@ -385,6 +392,16 @@ export function startGame(
   function onMouseDown(e:MouseEvent){
     e.preventDefault();
     if(e.button!==0)return;
+    if(isMobileMode){
+      const rect=cv.getBoundingClientRect();
+      const mx=(e.clientX-rect.left)*(W/rect.width);
+      const my=(e.clientY-rect.top)*(H/rect.height);
+      if(mx>=4&&mx<=140&&my>=60&&my<=60+activeQuests.length*14){
+        const idx=Math.floor((my-60)/14);
+        if(activeQuests[idx])selectedQuestId=activeQuests[idx].id;
+        return;
+      }
+    }
     if(state===ST.LEVELUP){
       const rect=cv.getBoundingClientRect();
       const mx=(e.clientX-rect.left)*(W/rect.width);
@@ -428,10 +445,11 @@ export function startGame(
 
   // ---- RPG Функции ----
   function initQuests(){
-    usedQuestIds.clear();activeQuests=[];
+    usedQuestIds.clear();activeQuests=[];selectedQuestId=null;
     const pool=QUEST_POOL.map(q=>({...q,progress:0,done:false,doneTimer:0}));
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     for(let i=0;i<Math.min(3,pool.length);i++){activeQuests.push(pool[i]);usedQuestIds.add(pool[i].id);}
+    if(activeQuests.length>0)selectedQuestId=activeQuests[0].id;
   }
   function giveXP(amount:number){
     xp+=amount;
@@ -2723,13 +2741,16 @@ export function startGame(
     for(let i=0;i<activeQuests.length;i++){
       const q=activeQuests[i],y=qy+i*qh;
       const prog=Math.min(1,q.progress/q.target);
+      const isSel=q.id===selectedQuestId;
+      const boxCol=isSel?'#ffb040':'rgba(255,255,255,0.08)';
+      px(x+2,y+1,qw-4,12,boxCol);
       if(q.done){
         txt('✓ '+q.desc,x+3,y+10,'#ffe840',7,'left','#000');
       }else{
         const counter=q.progress+'/'+q.target;
         ctx.font=`bold 7px ${PF}`;
         const cw=ctx.measureText(counter).width+2;
-        txt(q.icon+' '+q.desc,x+3,y+10,'#d8c8ff',7,'left','#000',qw-cw-6);
+        txt(q.icon+' '+q.desc,x+3,y+10,isSel?'#fff4c2':'#d8c8ff',7,'left','#000',qw-cw-6);
         txt(counter,x+qw-1,y+10,'#8070c0',7,'right','#000');
         px(x+2,y+12,qw-4,2,'rgba(30,14,60,0.8)');
         if(prog>0)px(x+2,y+12,Math.floor((qw-4)*prog),2,'#7060c0');
@@ -2737,8 +2758,9 @@ export function startGame(
     }
   }
   function drawTutorial(){
-    if(tutStep===0||tutStep>TUT_STEPS.length)return;
-    const s=TUT_STEPS[tutStep-1];
+    if(tutStep===0||tutStep>(isMobileMode?MOBILE_TUT_STEPS.length:TUT_STEPS.length))return;
+    const steps=isMobileMode?MOBILE_TUT_STEPS:TUT_STEPS;
+    const s=steps[tutStep-1];
     const fadeIn=Math.min(1,tutTimer/20);
     const fadeOut=tutTimer>TUT_AUTO-40?Math.max(0,(TUT_AUTO-tutTimer)/40):1;
     const alpha=fadeIn*fadeOut;
@@ -2760,6 +2782,10 @@ export function startGame(
     // текст — две строки
     txt(s.line1,bx+BW/2+8,by+16,'#ffe8a0',8,'center','#1a0800');
     txt(s.line2,bx+BW/2+8,by+29,'#c8b0e0',7,'center','#1a0800');
+    if(isMobileMode && tutStep===3){
+      px(bx+BW/2-16,by+4,32,12,'rgba(255,176,64,0.2)');
+      txt('🦴',bx+BW/2,by+13,'#ffb040',10,'center','#000');
+    }
     // прогресс-бар авто-перехода
     const pp=Math.min(1,tutTimer/TUT_AUTO);
     ctx.globalAlpha=alpha*0.5;
