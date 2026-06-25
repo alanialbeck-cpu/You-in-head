@@ -389,23 +389,56 @@ export function startGame(
     if(e.code==='ArrowLeft' ||e.code==='KeyA')moveLeft=false;
     if(e.code==='ArrowRight'||e.code==='KeyD')moveRight=false;
   }
+  function completeQuest(q:Quest){
+    if(!q||q.done)return;
+    q.progress=q.target;
+    q.done=true;
+    q.doneTimer=0;
+    giveXP(q.xpReward);
+
+    usedQuestIds.delete(q.id);
+    const idx=activeQuests.indexOf(q);
+    if(idx>=0){
+      const pool2=QUEST_POOL.filter(p=>!usedQuestIds.has(p.id));
+      if(pool2.length===0){
+        usedQuestIds.clear();
+        activeQuests.forEach(a=>usedQuestIds.add(a.id));
+      }
+      const avail=QUEST_POOL.filter(p=>!usedQuestIds.has(p.id));
+      if(avail.length>0){
+        const next={...avail[Math.floor(Math.random()*avail.length)],progress:0,done:false,doneTimer:0};
+        usedQuestIds.add(next.id);
+        activeQuests[idx]=next;
+      } else {
+        activeQuests.splice(idx,1);
+      }
+    }
+    if(selectedQuestId===q.id){
+      selectedQuestId=activeQuests[0]?.id ?? null;
+    }
+  }
+
+  function trySelectQuestFromPoint(mx:number,my:number){
+    if(state!==ST.PLAY)return false;
+    if(mx>=4&&mx<=140&&my>=60&&my<=60+activeQuests.length*14){
+      const idx=Math.floor((my-60)/14);
+      const q=activeQuests[idx];
+      if(q){
+        selectedQuestId=q.id;
+        completeQuest(q);
+      }
+      return true;
+    }
+    return false;
+  }
   function onMouseDown(e:MouseEvent){
     e.preventDefault();
     if(e.button!==0)return;
-    if(isMobileMode){
-      const rect=cv.getBoundingClientRect();
-      const mx=(e.clientX-rect.left)*(W/rect.width);
-      const my=(e.clientY-rect.top)*(H/rect.height);
-      if(mx>=4&&mx<=140&&my>=60&&my<=60+activeQuests.length*14){
-        const idx=Math.floor((my-60)/14);
-        if(activeQuests[idx])selectedQuestId=activeQuests[idx].id;
-        return;
-      }
-    }
+    const rect=cv.getBoundingClientRect();
+    const mx=(e.clientX-rect.left)*(W/rect.width);
+    const my=(e.clientY-rect.top)*(H/rect.height);
+    if(trySelectQuestFromPoint(mx,my))return;
     if(state===ST.LEVELUP){
-      const rect=cv.getBoundingClientRect();
-      const mx=(e.clientX-rect.left)*(W/rect.width);
-      const my=(e.clientY-rect.top)*(H/rect.height);
       const BW=84,BH=56,BG=6;
       const startX=((W-(3*BW+2*BG))/2)|0;
       const BY=((H/2)-10)|0;
@@ -418,7 +451,16 @@ export function startGame(
     doSwordAttack();
   }
   function onMouseUp(){endHold();}
-  function onTouch(e:TouchEvent){e.preventDefault();doJump();}
+  function onTouch(e:TouchEvent){
+    e.preventDefault();
+    if(e.touches.length===0)return;
+    const touch=e.touches[0];
+    const rect=cv.getBoundingClientRect();
+    const mx=(touch.clientX-rect.left)*(W/rect.width);
+    const my=(touch.clientY-rect.top)*(H/rect.height);
+    if(trySelectQuestFromPoint(mx,my))return;
+    doJump();
+  }
   function onTouchEnd(e:TouchEvent){e.preventDefault();endHold();}
 
   function setMobileControl(name:'left'|'right'|'jump'|'attack'|'mount'|'sprint', active:boolean){
